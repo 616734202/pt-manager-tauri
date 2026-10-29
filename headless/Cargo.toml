@@ -12,7 +12,8 @@ path = "src/main.rs"
 [dependencies]
 # 复用 src-tauri 的核心模块；这些模块只用 async_runtime / AppHandle / Manager。
 # headless 不需要 wry(webkit2gtk)，故关闭默认特性，避免在 Linux 上引入 WebKit 依赖。
-tauri = { version = "2", default-features = false, features = [] }
+# 锁定到与桌面端 Cargo.lock 一致的 2.10.3，避免版本漂移导致编译失败。
+tauri = { version = "=2.10.3", default-features = false, features = [] }
 tokio = { version = "1", features = ["sync", "time", "rt", "net", "io-util"] }
 tokio-rustls = "0.26"
 rustls-native-certs = "0.8"
