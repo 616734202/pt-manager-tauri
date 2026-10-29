@@ -2,7 +2,7 @@ use chrono::{DateTime, Local, LocalResult, NaiveDateTime, TimeZone};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tauri::Manager;
@@ -347,7 +347,17 @@ impl LogEntry {
     }
 }
 
+/// 数据目录覆盖。headless / 容器模式通过 `PT_MANAGER_DATA_DIR` 指定持久化目录。
+pub fn data_dir_override() -> Option<PathBuf> {
+    std::env::var_os("PT_MANAGER_DATA_DIR").map(PathBuf::from)
+}
+
 fn local_data_dir() -> PathBuf {
+    if let Some(dir) = data_dir_override() {
+        fs::create_dir_all(&dir).ok();
+        return dir;
+    }
+
     #[cfg(target_os = "windows")]
     {
         if let Some(root) = std::env::var_os("LOCALAPPDATA") {
@@ -480,40 +490,87 @@ fn format_log_line(entry: &LogEntry) -> String {
     )
 }
 
-/// 获取配置文件路径
-fn config_path(app_handle: &tauri::AppHandle) -> PathBuf {
+/// 获取配置所在目录：优先环境变量覆盖，否则使用 Tauri 应用数据目录。
+fn config_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    if let Some(dir) = data_dir_override() {
+        fs::create_dir_all(&dir).ok();
+        return dir;
+    }
     let dir = app_handle
         .path()
         .app_data_dir()
         .expect("failed to get app data dir");
     fs::create_dir_all(&dir).ok();
-    dir.join("config.json")
+    dir
+}
+
+fn sanitize_config(config: &mut AppConfig) {
+    config.log_retention = normalize_log_retention(config.log_retention);
+    config.ocr_retry_count = config.ocr_retry_count.clamp(1, 5);
+    config.min_login_attempts_remaining = config.min_login_attempts_remaining.clamp(1, 20);
 }
 
 /// 从磁盘加载配置
 pub fn load_config(app_handle: &tauri::AppHandle) -> AppConfig {
-    let path = config_path(app_handle);
-    if path.exists() {
-        let data = fs::read_to_string(&path).unwrap_or_default();
-        let mut config = serde_json::from_str::<AppConfig>(&data).unwrap_or_default();
-        config.log_retention = normalize_log_retention(config.log_retention);
-        config.ocr_retry_count = config.ocr_retry_count.clamp(1, 5);
-        config.min_login_attempts_remaining = config.min_login_attempts_remaining.clamp(1, 20);
-        if refresh_login_attempt_resets(&mut config) {
-            save_config(app_handle, &config);
-        }
-        config
-    } else {
-        let config = AppConfig::default();
-        save_config(app_handle, &config);
-        config
+    let dir = config_dir(app_handle);
+    let mut config = load_config_from_dir(&dir);
+    if refresh_login_attempt_resets(&mut config) {
+        save_config_to_dir(&dir, &config);
     }
+    config
 }
 
 /// 保存配置到磁盘
 pub fn save_config(app_handle: &tauri::AppHandle, config: &AppConfig) {
-    let path = config_path(app_handle);
-    if let Ok(data) = serde_json::to_string_pretty(config) {
-        fs::write(&path, data).ok();
+    let dir = config_dir(app_handle);
+    save_config_to_dir(&dir, config);
+}
+
+/// 从指定目录加载配置；目录不存在时写入默认配置。
+pub fn load_config_from_dir(dir: &Path) -> AppConfig {
+    let path = dir.join("config.json");
+    if path.exists() {
+        let data = fs::read_to_string(&path).unwrap_or_default();
+        let mut config = serde_json::from_str::<AppConfig>(&data).unwrap_or_default();
+        sanitize_config(&mut config);
+        config
+    } else {
+        let config = AppConfig::default();
+        save_config_to_dir(dir, &config);
+        config
     }
+}
+
+/// 保存配置到指定目录。
+pub fn save_config_to_dir(dir: &Path, config: &AppConfig) {
+    if let Ok(data) = serde_json::to_string_pretty(config) {
+        if let Err(err) = fs::create_dir_all(dir) {
+            eprintln!("创建配置目录失败：{err}");
+            return;
+        }
+        if let Err(err) = fs::write(dir.join("config.json"), data) {
+            eprintln!("写入配置失败：{err}");
+        }
+    }
+}
+
+/// headless / 容器模式的数据目录：`PT_MANAGER_DATA_DIR` 优先，否则用临时目录。
+pub fn headless_data_dir() -> PathBuf {
+    if let Some(dir) = data_dir_override() {
+        fs::create_dir_all(&dir).ok();
+        return dir;
+    }
+    let dir = std::env::temp_dir().join("pt-manager-headless");
+    fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// headless 入口专用的配置加载（无需 Tauri AppHandle）。
+pub fn load_config_headless() -> AppConfig {
+    let dir = headless_data_dir();
+    let mut config = load_config_from_dir(&dir);
+    if refresh_login_attempt_resets(&mut config) {
+        save_config_to_dir(&dir, &config);
+    }
+    config
 }

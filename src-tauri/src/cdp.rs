@@ -1663,6 +1663,13 @@ fn launch_browser(
 }
 
 fn dedicated_profile_dir(browser: BrowserKind) -> PathBuf {
+    // headless / 容器模式：允许把登录态 Profile 放到持久化目录，避免容器重启后丢失登录。
+    if let Some(dir) = env::var_os("PT_MANAGER_CHROME_PROFILE_DIR") {
+        let dir = PathBuf::from(dir).join(browser.profile_name());
+        fs::create_dir_all(&dir).ok();
+        return dir;
+    }
+
     #[cfg(target_os = "windows")]
     {
         if let Some(root) = env::var_os("LOCALAPPDATA") {

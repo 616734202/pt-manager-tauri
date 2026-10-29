@@ -1,0 +1,21 @@
+# headless 构建只需 Rust 源码，前端 / node 产物 / git / 目标文件都不需要进构建上下文。
+node_modules
+dist
+target
+**/target
+.git
+.gitignore
+src-tauri/target
+src-tauri/gen
+data
+*.log
+.DS_Store
+docs
+public
+src
+package.json
+package-lock.json
+tsconfig.json
+tsconfig.node.json
+vite.config.ts
+index.html

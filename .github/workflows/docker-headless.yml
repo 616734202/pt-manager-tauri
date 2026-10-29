@@ -1,0 +1,73 @@
+# 构建并推送 headless 保活服务镜像到 GitHub Container Registry (ghcr.io)。
+#
+# 触发：
+#   - push v* 格式的 Git Tag（例如 v2.0.1）
+#   - 手动触发（Actions 页面 -> Run workflow）
+#
+# 产出镜像（x86_64）：
+#   ghcr.io/<owner>/pt-manager-tauri:latest
+#   ghcr.io/<owner>/pt-manager-tauri:<tag>   （push tag 时）
+#
+# 使用前提：仓库 Settings -> Actions -> General -> Workflow permissions
+#   勾选 "Read and write permissions"，否则推送 ghcr 会 403。
+
+name: Build & Push headless Docker image
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # 小写仓库名作为镜像名，例如 ghcr.io/edwinzzzs2/pt-manager-tauri
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # google-chrome 官方仅提供 x86_64 的 .deb，镜像固定 linux/amd64。
+          # 如需 arm64，需把 Dockerfile 里的 chrome 换成 chromium 源，另见 docs/docker-headless.md。
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

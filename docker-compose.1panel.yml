@@ -1,0 +1,19 @@
+# 1Panel 部署版（无 build，直接用已构建的镜像）。
+# 先把镜像构建好（在仓库根目录执行）：
+#   docker build -t pt-manager-headless:latest .
+# 然后在 1Panel「容器 -> 编排」新建编排，粘贴本文件启动。
+services:
+  pt-manager-headless:
+    image: pt-manager-headless:latest
+    container_name: pt-manager-headless
+    restart: unless-stopped
+    environment:
+      - PT_MANAGER_DATA_DIR=/data
+      - PT_MANAGER_CHROME_PROFILE_DIR=/data
+      # 0 = headed Chrome + Xvfb（推荐）；1 = Chrome headless=new（更省资源）
+      - HEADLESS=0
+      # 站点数据（账号密码/TOTP/通知 Token）由容器内应用读取；如需通过环境变量注入，见下方注释示例
+    volumes:
+      - /opt/pt-manager/data:/data
+    # 默认进入定时保活（常驻）。只需立即跑一轮： command: ["--once"]
+    command: []

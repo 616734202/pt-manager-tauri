@@ -1,0 +1,32 @@
+[package]
+name = "pt-manager-headless"
+version = "2.0.0"
+edition = "2021"
+description = "PT Manager headless 保活服务（无 GUI，供 Docker / 服务器使用）"
+authors = ["you"]
+
+[[bin]]
+name = "pt-manager-headless"
+path = "src/main.rs"
+
+[dependencies]
+# 复用 src-tauri 的核心模块；这些模块只用 async_runtime / AppHandle / Manager。
+# headless 不需要 wry(webkit2gtk)，故关闭默认特性，避免在 Linux 上引入 WebKit 依赖。
+tauri = { version = "2", default-features = false, features = [] }
+tokio = { version = "1", features = ["sync", "time", "rt", "net", "io-util"] }
+tokio-rustls = "0.26"
+rustls-native-certs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+hmac = "0.13"
+sha1 = "0.11"
+data-encoding = "2.11"
+base64 = "0.22"
+image = "0.25.10"
+reqwest = { version = "0.13", features = ["json", "query", "blocking"] }
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
+md-5 = "0.10"

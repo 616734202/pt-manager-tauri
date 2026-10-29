@@ -1,0 +1,37 @@
+services:
+  pt-manager-headless:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pt-manager-headless:latest
+    container_name: pt-manager-headless
+    restart: unless-stopped
+    environment:
+      # 数据目录：配置(config.json) + 日志(run.log) + Chrome 登录 Profile，都落到这个目录并挂载持久化。
+      - PT_MANAGER_DATA_DIR=/data
+      - PT_MANAGER_CHROME_PROFILE_DIR=/data
+      # 0 = headed Chrome + Xvfb（最贴近桌面行为，推荐）；1 = Chrome headless=new（更省资源）。
+      - HEADLESS=0
+    volumes:
+      # 首次运行请先创建目录并授权容器用户（uid=1000）：
+      #   mkdir -p data && chown -R 1000:1000 data
+      - ./data:/data
+    # 默认进入定时保活（Cron 调度，常驻）。
+    # 若只想立即执行一轮后退出： command: ["--once"]
+    command: []
+
+  # 可选：单独跑一次保活（适合测试/一次性触发）。用法：
+  #   docker compose run --rm pt-manager-once
+  pt-manager-once:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pt-manager-headless:latest
+    profiles: ["tools"]
+    environment:
+      - PT_MANAGER_DATA_DIR=/data
+      - PT_MANAGER_CHROME_PROFILE_DIR=/data
+      - HEADLESS=0
+    volumes:
+      - ./data:/data
+    command: ["--once"]

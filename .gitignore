@@ -25,6 +25,12 @@ tauri-signing.key
 *.p12
 *.pfx
 
+# Docker / headless
+target
+**/target
+data/
+headless/Cargo.lock
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
